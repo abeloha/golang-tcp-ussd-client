@@ -35,9 +35,9 @@ func main() {
 
 	// Initialize client with timeouts
 	tcpClient := client.NewClient(
-		10*time.Second, // dial timeout
-		30*time.Second, // read timeout
-		30*time.Second, // write timeout
+		60*time.Second, // dial timeout
+		60*time.Second, // read timeout
+		60*time.Second, // write timeout
 	)
 
 	// Connect to server
