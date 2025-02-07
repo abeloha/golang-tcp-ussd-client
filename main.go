@@ -50,7 +50,7 @@ func main() {
 	utils.LogInfo("Connected to server %s:%s", cfg.ServerHost, cfg.ServerPort)
 
 	// Example: Login Request
-	loginResp, err := handlers.SendLoginRequest(ctx, tcpClient, cfg.Username, cfg.Password)
+	loginResp, err := handlers.SendLoginRequest(ctx, tcpClient, cfg)
 	if err != nil {
 		utils.LogError("Login failed: %v", err)
 		os.Exit(1)
