@@ -5,8 +5,10 @@ import "encoding/xml"
 // Login Request and Response
 type AuthRequest struct {
 	XMLName  xml.Name `xml:"AUTHRequest"`
-	Username string   `xml:"username"`
-	Password string   `xml:"password"`
+	RequestID string   `xml:"requestId"`
+	Username string   `xml:"userName"`
+	Password string   `xml:"passWord"`
+	ApplicationID string   `xml:"applicationId"`
 }
 
 type AuthResponse struct {

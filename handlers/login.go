@@ -37,8 +37,10 @@ func SendLoginRequest(ctx context.Context, client *client.Client, cfg config.Con
 		}
 
 		req := models.AuthRequest{
+			RequestID:  time.Now().Format("20060102150405"),
 			Username: username,
 			Password: password,
+			ApplicationID: cfg.ClientID,
 		}
 		
 		// Log request details with masked password
