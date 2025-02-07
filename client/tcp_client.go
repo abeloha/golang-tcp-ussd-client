@@ -2,7 +2,6 @@ package client
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"math/rand"
 	"net"
@@ -132,7 +131,10 @@ func (c *Client) WriteMessageWithHeader(sessionID string, messageType string, pa
 	copy(header[0:16], sessionBytes)
 	
 	// Next 3 bytes: total message length (big-endian)
-	binary.BigEndian.PutUint32(header[16:19], uint32(totalLength))
+	// Manually encode 3-byte length to avoid uint32 limitation
+	header[16] = byte((totalLength >> 16) & 0xFF)   // Most significant byte
+	header[17] = byte((totalLength >> 8) & 0xFF)    // Middle byte
+	header[18] = byte(totalLength & 0xFF)           // Least significant byte
 
 	// Combine header and payload
 	fullMessage := append(header, payload...)
@@ -154,7 +156,10 @@ func (c *Client) ReadMessageWithHeader() (sessionID string, payload []byte, err 
 	sessionID = fmt.Sprintf("%x", header[0:16])
 
 	// Extract total message length (last 3 bytes)
-	totalLength := binary.BigEndian.Uint32(header[16:19])
+	// Manually decode 3-byte length
+	totalLength := (uint32(header[16]) << 16) | 
+				   (uint32(header[17]) << 8)  | 
+				   uint32(header[18])
 
 	// Read payload
 	payload = make([]byte, totalLength-19)
