@@ -36,41 +36,36 @@ func SendLoginRequest(ctx context.Context, client *client.Client, cfg config.Con
 			continue
 		}
 
+		// Generate unique session ID for this request
+		sessionID := fmt.Sprintf("%x", time.Now().UnixNano())
+
 		req := models.AuthRequest{
-			RequestID:  time.Now().Format("20060102150405"),
-			Username: username,
-			Password: password,
-			ApplicationID: cfg.ClientID,
+			RequestID:     sessionID,
+			Username:       username,
+			Password:       password,
+			ApplicationID:  cfg.ClientID,
 		}
 		
-		// Log request details with masked password
-		maskedPassword := "****" + password[len(password)-4:]
-		utils.LogInfo("Login Request Details:")
-		utils.LogInfo("Username: %s", username)
-		utils.LogInfo("Password: %s", maskedPassword)
-
+		// Marshal XML payload
 		xmlData, err := xml.MarshalIndent(req, "", "  ")
 		if err != nil {
 			return nil, fmt.Errorf("failed to create login request: %v", err)
 		}
 
-		// Log raw XML payload
-		utils.LogInfo("XML Payload:\n%s", string(xmlData))
-
-		utils.LogInfo("Sending login request for user: %s (Attempt %d)", username, attempt+1)
-		
+		// Add newline to XML payload
 		fullPayload := append(xmlData, '\n')
-		utils.LogInfo("Full Payload (with newline): %v", fullPayload)
-
-		if err := client.Write(fullPayload); err != nil {
+		
+		// Write message with header using generated sessionID
+		err = client.WriteMessageWithHeader(sessionID, "LOGIN", fullPayload)
+		if err != nil {
 			lastErr = fmt.Errorf("failed to send login request on attempt %d: %v", attempt+1, err)
 			utils.LogError("%v", lastErr)
 			time.Sleep(2 * time.Second)
 			continue
 		}
 
-		response := make([]byte, 4096)
-		n, err := client.Read(response)
+		// Read response with header
+		receivedSessionID, responsePayload, err := client.ReadMessageWithHeader()
 		if err != nil {
 			lastErr = fmt.Errorf("failed to read login response on attempt %d: %v", attempt+1, err)
 			utils.LogError("%v", lastErr)
@@ -78,20 +73,15 @@ func SendLoginRequest(ctx context.Context, client *client.Client, cfg config.Con
 			continue
 		}
 
-		// Log raw response
-		utils.LogInfo("Raw Response (bytes): %v", response[:n])
-		utils.LogInfo("Raw Response (string): %s", string(response[:n]))
+		// Log session ID for correlation
+		utils.LogInfo("Sent Session ID: %s", sessionID)
+		utils.LogInfo("Received Session ID: %s", receivedSessionID)
 
 		var authResponse models.AuthResponse
-		if err := xml.Unmarshal(response[:n], &authResponse); err != nil {
+		if err := xml.Unmarshal(responsePayload, &authResponse); err != nil {
 			utils.LogError("XML Unmarshal Error: %v", err)
 			return nil, fmt.Errorf("failed to parse login response: %v", err)
 		}
-
-		// Log parsed response details
-		utils.LogInfo("Auth Response Details:")
-		utils.LogInfo("Success: %v", authResponse.IsSuccess())
-		utils.LogInfo("Message: %s", authResponse.GetMessage())
 
 		if !authResponse.IsSuccess() {
 			utils.LogError("Login failed: %s", authResponse.GetMessage())

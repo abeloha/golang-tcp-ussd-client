@@ -2,8 +2,11 @@ package client
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
+	"math/rand"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -18,6 +21,29 @@ type Client struct {
 	dialTimeout  time.Duration
 	readTimeout  time.Duration
 	writeTimeout time.Duration
+}
+
+type SessionManager struct {
+	mu         sync.Mutex
+	sessionIDs map[string]string
+}
+
+func NewSessionManager() *SessionManager {
+	return &SessionManager{
+		sessionIDs: make(map[string]string),
+	}
+}
+
+func (sm *SessionManager) GenerateSessionID() string {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	// Generate a unique session ID
+	sessionID := make([]byte, 16)
+	rand.Read(sessionID)
+
+	// Convert to hex string for readability and uniqueness
+	return fmt.Sprintf("%x", sessionID)
 }
 
 func NewClient(dialTimeout, readTimeout, writeTimeout time.Duration) *Client {
@@ -81,4 +107,61 @@ func (c *Client) Read(buffer []byte) (int, error) {
 	}
 
 	return c.conn.Read(buffer)
+}
+
+func (c *Client) WriteMessageWithHeader(sessionID string, messageType string, payload []byte) error {
+	// Calculate total message length (header + payload)
+	totalLength := len(payload) + 19
+
+	// Create header
+	header := make([]byte, 19)
+	
+	// Convert sessionID to bytes
+	sessionBytes := []byte(sessionID)
+	
+	// Ensure sessionID is exactly 16 bytes
+	if len(sessionBytes) > 16 {
+		sessionBytes = sessionBytes[:16]
+	} else if len(sessionBytes) < 16 {
+		paddedSessionID := make([]byte, 16)
+		copy(paddedSessionID, sessionBytes)
+		sessionBytes = paddedSessionID
+	}
+
+	// First 16 bytes: Session ID
+	copy(header[0:16], sessionBytes)
+	
+	// Next 3 bytes: total message length (big-endian)
+	binary.BigEndian.PutUint32(header[16:19], uint32(totalLength))
+
+	// Combine header and payload
+	fullMessage := append(header, payload...)
+
+	// Write the full message
+	_, err := c.conn.Write(fullMessage)
+	return err
+}
+
+func (c *Client) ReadMessageWithHeader() (sessionID string, payload []byte, err error) {
+	// Read header
+	header := make([]byte, 19)
+	_, err = c.conn.Read(header)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to read header: %v", err)
+	}
+
+	// Extract session ID (first 16 bytes)
+	sessionID = fmt.Sprintf("%x", header[0:16])
+
+	// Extract total message length (last 3 bytes)
+	totalLength := binary.BigEndian.Uint32(header[16:19])
+
+	// Read payload
+	payload = make([]byte, totalLength-19)
+	_, err = c.conn.Read(payload)
+	if err != nil {
+		return sessionID, nil, fmt.Errorf("failed to read payload: %v", err)
+	}
+
+	return sessionID, payload, nil
 }
